@@ -1,0 +1,59 @@
+# dataset
+dataset:
+  process:
+    batch_size: 4 #16
+    num_workers: 0
+  segment:
+    segment: 30
+    sample_rate: 16000
+  train:
+    csv_path: 'csv/ak_train.csv'
+  valid:  
+    csv_path: 'csv/ak_valid.csv'
+  test:
+    csv_path: 
+# trainer parameters
+trainer:
+  accelerator: 'auto'
+  accumulate_grad_batches: 5
+  max_epochs: 400 #200
+  precision: '16-mixed'
+  profiler: 'simple'
+  gradient_clip_val: 5.
+optimizer:
+  lr: 4.e-5
+logger:
+  save_dir: './unet/ak'
+  version: 1
+  name: 'lightning_logs'
+checkpoint:
+  monitor: 'valid_loss'
+  filename: 'checkpoint_{epoch}-{step}-{valid_loss:.3f}'
+  save_last: True
+  save_top_k: 1
+  mode: 'min'
+  every_n_epochs: 1
+# training parameters
+demucs:
+  chin: 1
+  chout: 1
+  hidden: 64
+  depth: 5
+  kernel_size: 8
+  stride: 4
+  causal: True
+  resample: 4
+  growth: 2
+  max_hidden: 10_000
+  normalize: True
+  glu: True
+  rescale: 0.1
+  floor: 1e-3
+  sample_rate: 16_000
+  attention: True
+  conformer: False
+loss:
+  l1_loss:
+    weight: 0.0
+  stft:
+    weight: 1.0
