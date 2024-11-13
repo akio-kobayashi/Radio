@@ -3,10 +3,11 @@ from torch import Tensor
 import torch.nn as nn
 import pytorch_lightning as pl
 import numpy as np
-from demucus import Demucs
+from demcus import Demucs
 from stft_loss import MultiResolutionSTFTLoss
 from typing import Tuple
 import os,sys
+from einops import rearrange
 
 class HuberLoss(nn.Module):
     def __init__(self, delta):
@@ -75,8 +76,10 @@ class LitDenoiser(pl.LightningModule):
     
     def training_step(self, batch, batch_idx:int) -> Tensor:
         mixtures, sources, lengths = batch
+        sources = rearrange(sources, 'b c t -> (b c) t')
 
         src_hat = self.forward(mixtures)
+        src_hat = rearrange(src_hat, 'b c t -> (b c) t')
         _loss, d = self.compute_loss(src_hat, sources, lengths, valid=False)
         self.log_dict(d)
 
@@ -85,8 +88,10 @@ class LitDenoiser(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         mixtures, sources, lengths = batch
+        sources = rearrange(sources, 'b c t -> (b c) t')
 
         src_hat = self.forward(mixtures)
+        src_hat = rearrange(src_hat, 'b c t -> (b c) t')
         _loss, d = self.compute_loss(src_hat, sources, lengths, valid=True)
         self.log_dict(d)
         self.valid_step_loss.append(_loss.item())

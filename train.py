@@ -11,13 +11,15 @@ import yaml
 import warnings
 warnings.filterwarnings('ignore')
 
-def main(config:dict, checkpoint_path=None):
+def main(config:dict, args):
 
     model = LitDenoiser(config)
     model.model.to('cuda')
    
     train_dataset = RadioDataset(config['dataset']['train']['csv_path'],
                                  config,
+                                 rp_src=args.src_dir,
+                                 rp_tgt=args.tgt_dir
                                  )
     train_loader = data.DataLoader(dataset=train_dataset,
                                    **config['dataset']['process'],
@@ -26,6 +28,8 @@ def main(config:dict, checkpoint_path=None):
                                    collate_fn=lambda x: rd.data_processing(x))
     valid_dataset = RadioDataset(config['dataset']['valid']['csv_path'],
                                  config,
+                                 rp_src=args.src_dir,
+                                 rp_tgt=args.tgt_dir
                                  )
     valid_loader = data.DataLoader(dataset=valid_dataset,
                                    **config['dataset']['process'],
@@ -38,7 +42,6 @@ def main(config:dict, checkpoint_path=None):
     logger = TensorBoardLogger(**config['logger'])
     trainer = pl.Trainer( callbacks=callbacks,
                           logger=logger,
-                          devices=args.gpus,
                           **config['trainer'] )
     trainer.fit(model=model, ckpt_path=args.checkpoint, train_dataloaders=train_loader,
                 val_dataloaders=valid_loader)
@@ -51,12 +54,16 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--config', type=str, required=True)
     parser.add_argument('--checkpoint', type=str, default=None)
-    parser.add_argument('--gpus', nargs='*', type=int, default=0)
+    parser.add_argument('--src_dir', type=str, default=None)
+    parser.add_argument('--tgt_dir', type=str, default=None)
+    #parser.add_argument('--gpus', nargs='*', type=int, default=0)
     args=parser.parse_args()
 
     torch.set_float32_matmul_precision('high')
+    print(torch.cuda.is_available())
+    print(torch.cuda.device_count())
     with open(args.config, 'r') as yf:
         config = yaml.safe_load(yf)
     if 'config' in config.keys():
         config = config['config']
-    main(config, args.checkpoint, args.dict_path)
+    main(config, args)

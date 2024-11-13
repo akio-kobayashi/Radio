@@ -3,12 +3,12 @@ import time
 import torch as th
 from torch import nn
 from torch.nn import functional as F
-from .resample import downsample2, upsample2
+from resample import downsample2, upsample2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from .conformer import ConformerConvModule, ConformerBlock
+from conformer import ConformerConvModule, ConformerBlock
 
 class TFEncoder(nn.Module):
     def __init__(self, dim, n_layers=5, n_heads=8):
@@ -72,16 +72,17 @@ class Demucs(nn.Module):
         self.kernel_size = config['kernel_size']
         self.stride = config['stride']
         self.causal = config['causal']
-        self.floor = config['floor']
+        self.floor = float(config['floor'])
         self.resample = config['resample']
         self.normalize = config['normalize']
         self.sample_rate = config['sample_rate']
         self.attention = config['attention']
         self.conformer = config['conformer']
+        self.growth = config['growth']
         
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
-        activation = nn.GLU(1) if glu else nn.ReLU()
+        activation = nn.GLU(1) if config['glu'] else nn.ReLU()
         ch_scale = 2 if config['glu'] else 1
 
         chin, chout, hidden, kernel_size, stride = self.chin, self.chout, self.hidden, self.kernel_size, self.stride
@@ -138,8 +139,9 @@ class Demucs(nn.Module):
             mix = mix.unsqueeze(1)
 
         if self.normalize:
-            mono = mix.mean(dim=1, keepdim=True)
-            std = mono.std(dim=-1, keepdim=True)
+            #mono = mix.mean(dim=1, keepdim=True)
+            #std = mono.std(dim=-1, keepdim=True)
+            std, _ = torch.std_mean(mix, dim=-1, keepdim=True)
             mix = mix / (self.floor + std)
         else:
             std = 1
@@ -383,3 +385,9 @@ if __name__ == '__main__':
     with open(args.config, 'r') as yf:
         config = yaml.safe_load(yf)
     model = Demucs(config['demucs'])
+    print(model)
+    
+    data = torch.randn(1, 1, 12345)
+    print(f'input shape: {data.shape}')
+    out = model(data)
+    print(f'output shape: {out.shape}')
