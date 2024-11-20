@@ -39,10 +39,13 @@ class LitDenoiser(pl.LightningModule):
 
         self.stft_loss = MultiResolutionSTFTLoss()
         self.stft_loss_weight = config['loss']['stft']['weight']
-        self.l1_loss = L1Loss()
-        self.l1_loss_weight = config['loss']['l1_loss']['weight']
+        if config['loss']['type'] == 'huber':
+            self.loss = HuberLoss(delta=config['loss']['huber_loss']['delta'])
+            self.loss_weight = config['loss']['huber_loss']['weight']
+        else:
+            self.loss = L1Loss()
+            self.loss_weight = config['loss']['l1_loss']['weight']
 
-        #self.dict_path = os.path.join(config['logger']['save_dir'], config['logger']['name'], 'version_'+str(config['logger']['version']))
         self.valid_step_loss=[]
         self.valid_epoch_loss=[]
         
@@ -58,9 +61,9 @@ class LitDenoiser(pl.LightningModule):
         _loss = 0.
         
         with torch.amp.autocast('cuda', dtype=torch.float32):
-            _l1_loss = self.l1_loss(estimates, targets, lengths)
-            d[prefix + 'l1_loss'] = _l1_loss
-            _loss = self.l1_loss_weight * _l1_loss
+            _loss = self.loss(estimates, targets, lengths)
+            d[prefix + 'amp_loss'] = _loss
+            _loss = self.loss_weight * _loss
 
         with torch.amp.autocast('cuda', dtype=torch.float32):
             _stft_loss1, _stft_loss2 = self.stft_loss(estimates, targets)
