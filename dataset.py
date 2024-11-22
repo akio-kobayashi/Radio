@@ -23,6 +23,7 @@ class RadioDataset(torch.utils.data.Dataset):
         self.sample_rate = sample_rate
         self.rp_src = rp_src
         self.rp_tgt = rp_tgt
+        self.segment = config['segment']
         
     def __len__(self) -> int:
         return len(self.df)
@@ -44,7 +45,16 @@ class RadioDataset(torch.utils.data.Dataset):
             mixture, _ = torchaudio.load(noisy_path)
             std, mean = torch.std_mean(mixture, dim=-1)
             mixture = (mixture - mean)/std
-        
+
+            # speech tensor shape = (1, T)
+            if self.segment > 0:
+                max_length = self.segment * self.sample_rate
+                _, T = mixture.shape
+                if T > max_length:
+                    start = np.randint(0, T - max_length+1)
+                    source = source[:, start:start+max_length]
+                    mixture = mixture[:, start:start+max_length]
+
         return torch.t(mixture), torch.t(source)
 
 def data_processing(data:Tuple[Tensor,Tensor]) -> Tuple[Tensor, Tensor, list]:

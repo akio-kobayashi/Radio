@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 import numpy as np
 from demcus import Demucs
 from stft_loss import MultiResolutionSTFTLoss
+from percept_loss import PerceptualLoss
 from typing import Tuple
 import os,sys
 from einops import rearrange
@@ -12,24 +13,24 @@ from einops import rearrange
 class HuberLoss(nn.Module):
     def __init__(self, delta):
         super().__init__()
-        self.loss = nn.HuberLoss(delta=delta)
+        self.loss = nn.HuberLoss(delta=delta, reduction='sum')
         
     def forward(self, preds, targets, lengths):
         mask = torch.zeros_like(preds, dtype=preds.dtype, device=preds.device)
         for b in range(len(preds)):
             mask[b, :lengths[b]] = 1
-        return self.loss(preds*mask, targets*mask)
+        return self.loss(preds*mask, targets*mask)/torch.sum(mask)
     
 class L1Loss(nn.Module):
     def __init__(self):
         super().__init__()
-        self.loss = nn.L1Loss()
+        self.loss = nn.L1Loss(reduction='sum')
         
     def forward(self, preds, targets, lengths):
         mask = torch.zeros_like(preds, dtype=preds.dtype, device=preds.device)
         for b in range(len(preds)):
             mask[b, :lengths[b]] = 1
-        return self.loss(preds*mask, targets*mask)
+        return self.loss(preds*mask, targets*mask)/torch.sum(mask)
     
 class LitDenoiser(pl.LightningModule):
     def __init__(self, config:dict) -> None:
@@ -37,12 +38,19 @@ class LitDenoiser(pl.LightningModule):
         self.config = config
         self.model = Demucs(config['demucs'])
 
-        self.stft_loss = MultiResolutionSTFTLoss()
+        self.stft_loss = self.percept_loss = None
+        if config['loss']['main'] == 'stft_loss':
+            self.stft_loss = MultiResolutionSTFTLoss()
+        elif config['loss']['main'] == 'percept_loss':
+            self.percept_loss = PerceptualLoss()
         self.stft_loss_weight = config['loss']['stft']['weight']
+        self.percept_loss_weight = config['loss']['perceptual']['weight']
+
+        self.loss == None
         if config['loss']['type'] == 'huber':
             self.loss = HuberLoss(delta=config['loss']['huber_loss']['delta'])
             self.loss_weight = config['loss']['huber_loss']['weight']
-        else:
+        elif config['loss']['type'] == 'l1_loss':
             self.loss = L1Loss()
             self.loss_weight = config['loss']['l1_loss']['weight']
 
@@ -60,16 +68,24 @@ class LitDenoiser(pl.LightningModule):
         d = {}
         _loss = 0.
         
-        with torch.amp.autocast('cuda', dtype=torch.float32):
-            _loss = self.loss(estimates, targets, lengths)
-            d[prefix + 'amp_loss'] = _loss
-            _loss = self.loss_weight * _loss
+        if self.loss is not None:
+            with torch.amp.autocast('cuda', dtype=torch.float32):
+                _loss = self.loss(estimates, targets, lengths)
+                d[prefix + 'amp_loss'] = _loss
+                _loss = self.loss_weight * _loss
 
-        with torch.amp.autocast('cuda', dtype=torch.float32):
-            _stft_loss1, _stft_loss2 = self.stft_loss(estimates, targets)
-            _loss += self.stft_loss_weight * (_stft_loss1 + _stft_loss2)
-            d[prefix+'stft_loss'] = _stft_loss1 + _stft_loss2
-            
+        if self.stft_loss is not None:
+            with torch.amp.autocast('cuda', dtype=torch.float32):
+                _stft_loss1, _stft_loss2 = self.stft_loss(estimates, targets)
+                _loss += self.stft_loss_weight * (_stft_loss1 + _stft_loss2)
+                d[prefix+'stft_loss'] = _stft_loss1 + _stft_loss2
+
+        if self.percept_loss is not None:
+            with torch.amp.autocast('cuda', dtype=torch.float32):
+                _percept_loss = self.percept_loss(estimates, targets, lengths)
+                _loss += self.percept_loss_weight * _percept_loss
+                d[prefix+'percept_loss'] = _percept_loss
+                
         if valid is True:
             d['valid_loss'] = _loss
         else:
