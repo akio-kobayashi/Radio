@@ -42,11 +42,11 @@ class LitDenoiser(pl.LightningModule):
         if config['loss']['main'] == 'stft_loss':
             self.stft_loss = MultiResolutionSTFTLoss()
         elif config['loss']['main'] == 'percept_loss':
-            self.percept_loss = PerceptualLoss()
+            self.percept_loss = PerceptualLoss(config)
         self.stft_loss_weight = config['loss']['stft']['weight']
         self.percept_loss_weight = config['loss']['perceptual']['weight']
 
-        self.loss == None
+        self.loss = None
         if config['loss']['type'] == 'huber':
             self.loss = HuberLoss(delta=config['loss']['huber_loss']['delta'])
             self.loss_weight = config['loss']['huber_loss']['weight']

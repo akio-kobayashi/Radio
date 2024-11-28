@@ -23,7 +23,7 @@ class RadioDataset(torch.utils.data.Dataset):
         self.sample_rate = sample_rate
         self.rp_src = rp_src
         self.rp_tgt = rp_tgt
-        self.segment = config['segment']
+        self.segment = config['dataset']['segment']['segment']
         
     def __len__(self) -> int:
         return len(self.df)
@@ -51,7 +51,7 @@ class RadioDataset(torch.utils.data.Dataset):
                 max_length = self.segment * self.sample_rate
                 _, T = mixture.shape
                 if T > max_length:
-                    start = np.randint(0, T - max_length+1)
+                    start = np.random.randint(0, T - max_length+1)
                     source = source[:, start:start+max_length]
                     mixture = mixture[:, start:start+max_length]
 

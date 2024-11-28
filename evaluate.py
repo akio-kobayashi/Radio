@@ -11,6 +11,7 @@ from argparse import ArgumentParser
 import pandas as pd
 import yaml
 import numpy as np
+from einops import rearrange
 
 def read_audio(path):
     wave, sr = torchaudio.load(path)
@@ -20,7 +21,7 @@ def main(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")    
 
-    decoder = whisper.load_model("large").to(device)
+    #decoder = whisper.load_model("large").to(device)
 
     with open(args.config, 'r') as yf:
         config = yaml.safe_load(yf)
@@ -35,6 +36,7 @@ def main(args):
     df = pd.read_csv(args.input_csv)
     df_out = pd.DataFrame(index=None,
                           columns=['key', 'clean', 'noisy', 'denoise'])
+    keys, noisy, clean, denoise = [], [], [], []
     with torch.no_grad():
         for [index, row] in df.iterrows():
 
@@ -44,8 +46,10 @@ def main(args):
             noisy.append(row['noisy'])
             clean.append(row['clean'])
 
-            noisy_wav = read_audio(row['noisy'])
-            clean_wav = read_audio(row['clean'])
+            noisy_path = row['noisy'].replace(args.src_dir, args.dst_dir)
+            clean_path = row['clean'].replace(args.src_dir, args.dst_dir)
+            noisy_wav = read_audio(noisy_path)
+            clean_wav = read_audio(clean_path)
             
             noisy_original_length = noisy_wav.shape[-1]
             clean_original_length = clean_wav.shape[-1]
@@ -55,7 +59,7 @@ def main(args):
             noisy_std, noisy_mean = torch.std_mean(noisy_wav)
             noisy_wav = (noisy_wav - noisy_mean)/noisy_std
 
-            denoise_wav = model(noisy_wav.to(device))
+            denoise_wav = rearrange(model(noisy_wav.to(device)), 'b c t -> (b c) t')
             denoise_length = min(noisy_original_length, denoise_wav.shape[-1])
             denoise_wav = denoise_wav[:, :denoise_length]
             denoise_wav *= noisy_std
@@ -77,7 +81,10 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=str, default=None)
     parser.add_argument('--input_csv', type=str)
     parser.add_argument('--output_csv', type=str)
-    parser.add_argument('--output_dir')
+    parser.add_argument('--output_dir', type=str)
+    parser.add_argument('--src_dir', type=str)
+    parser.add_argument('--dst_dir', type=str)
+    
     args = parser.parse_args()
 
     main(args)
