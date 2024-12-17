@@ -47,13 +47,15 @@ class LitDenoiser(pl.LightningModule):
         self.percept_loss_weight = config['loss']['perceptual']['weight']
 
         self.loss = None
+        '''
         if config['loss']['type'] == 'huber':
             self.loss = HuberLoss(delta=config['loss']['huber_loss']['delta'])
             self.loss_weight = config['loss']['huber_loss']['weight']
         elif config['loss']['type'] == 'l1_loss':
             self.loss = L1Loss()
             self.loss_weight = config['loss']['l1_loss']['weight']
-
+        '''
+        
         self.valid_step_loss=[]
         self.valid_epoch_loss=[]
         
@@ -76,9 +78,9 @@ class LitDenoiser(pl.LightningModule):
 
         if self.stft_loss is not None:
             with torch.amp.autocast('cuda', dtype=torch.float32):
-                _stft_loss1, _stft_loss2 = self.stft_loss(estimates, targets)
-                _loss += self.stft_loss_weight * (_stft_loss1 + _stft_loss2)
-                d[prefix+'stft_loss'] = _stft_loss1 + _stft_loss2
+                _stft_loss1, _stft_loss2, _phase_loss = self.stft_loss(estimates, targets, lengths)
+                _loss += self.stft_loss_weight * (_stft_loss1 + _stft_loss2 + _phase_loss)
+                d[prefix+'stft_loss'] = _stft_loss1 + _stft_loss2 + _phase_loss
 
         if self.percept_loss is not None:
             with torch.amp.autocast('cuda', dtype=torch.float32):
