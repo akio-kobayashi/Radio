@@ -76,10 +76,12 @@ class LitDenoiser(pl.LightningModule):
 
         if self.stft_loss is not None:
             with torch.amp.autocast('cuda', dtype=torch.float32):
-                _stft_loss1, _stft_loss2 = self.stft_loss(estimates, targets)
-                _loss += self.stft_loss_weight * (_stft_loss1 + _stft_loss2)
-                d[prefix+'stft_loss'] = _stft_loss1 + _stft_loss2
-
+                _stft_loss1, _stft_loss2, _stft_loss3 = self.stft_loss(estimates, targets)
+                _loss += self.stft_loss_weight * (_stft_loss1 + _stft_loss2 + _stft_loss3)
+                d[prefix+'stft_loss'] = _stft_loss1 + _stft_loss2 + _stft_loss3
+                d[prefix+'spectral_convergence'] = _stft_loss1
+                d[prefix+'magnitude'] = _stft_loss2
+                d[prefix+'complex'] = _stft_loss3
         if self.percept_loss is not None:
             with torch.amp.autocast('cuda', dtype=torch.float32):
                 _percept_loss = self.percept_loss(estimates, targets, lengths)
@@ -103,7 +105,6 @@ class LitDenoiser(pl.LightningModule):
         self.log_dict(d)
 
         return _loss
-
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         mixtures, sources, lengths = batch
