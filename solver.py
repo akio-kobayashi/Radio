@@ -69,7 +69,7 @@ class LitDenoiser(pl.LightningModule):
         
         d = {}
         _loss = 0.
-        
+
         if self.loss is not None:
             with torch.amp.autocast('cuda', dtype=torch.float32):
                 _loss = self.loss(estimates, targets, lengths)

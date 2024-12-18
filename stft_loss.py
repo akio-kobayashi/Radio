@@ -87,7 +87,7 @@ class PhaseLoss(torch.nn.Module):
         phase_diff = phase_diff * mask
 
         # Compute normalized loss
-        phase_loss = torch.sum(torch.abs(phase_diff)) / torch.sum(mask)
+        phase_loss = torch.sum(torch.abs(y_stft)*torch.abs(phase_diff)) / torch.sum(mask)
 
         return phase_loss
 
@@ -98,7 +98,7 @@ class SpectralConvergengeLoss(torch.nn.Module):
         """Initilize spectral convergence loss module."""
         super(SpectralConvergengeLoss, self).__init__()
 
-    def forward(self, x_mag, y_mag, lengths):
+    def forward(self, x_mag, y_mag):
         """Calculate forward propagation.
         Args:
             x_mag (Tensor): Magnitude spectrogram of predicted signal (B, #frames, #freq_bins).
@@ -126,7 +126,8 @@ class LogSTFTMagnitudeLoss(torch.nn.Module):
         Returns:
             Tensor: Log STFT magnitude loss value.
         """
-        total_loss = F.l1_loss(torch.log(y_mag), torch.log(x_mag), reduction="sum")
+        total_loss = F.l1_loss(torch.where(y_mag>0.0, torch.log(y_mag), 0.0),
+                               torch.where(x_mag>0.0, torch.log(x_mag), 0.0), reduction="sum")
         return total_loss / torch.sum(lengths)
       
 class CrossSpectralLoss(torch.nn.Module):
@@ -169,18 +170,20 @@ class STFTLoss(torch.nn.Module):
         Args:
             x (Tensor): Predicted signal (B, T).
             y (Tensor): Groundtruth signal (B, T).
-            lengths (Tensor): Lengths of each sample in the batch (B,).
+            lengths (List): Lengths of each sample in the batch (B,).
         Returns:
             Tensor: Spectral convergence loss value.
             Tensor: Log STFT magnitude loss value.
             Tensor: Cross-spectral loss value.
         """
+        lengths = torch.tensor(lengths, device=x.device)
         x_stft = stft(x.cuda(), self.fft_size, self.shift_size, self.win_length, self.window)
         y_stft = stft(y.cuda(), self.fft_size, self.shift_size, self.win_length, self.window)
         
         # Create masks based on lengths
-        max_len = x.size(1)
-        mask = torch.arange(max_len, device=x.device).expand(len(lengths), max_len) < lengths.unsqueeze(1)
+        valid_lengths = compute_stft_frame_lengths(lengths, self.fft_size, self.shift_size, self.win_length)
+        max_len = x_stft.size(1)
+        mask = torch.arange(max_len, device=x.device).expand(len(valid_lengths), max_len) < valid_lengths.unsqueeze(1)
         mask = mask.unsqueeze(-1)  # Adjust dimensions for STFT output
         
         x_stft = x_stft * mask
@@ -189,12 +192,11 @@ class STFTLoss(torch.nn.Module):
         x_mag = torch.abs(x_stft)
         y_mag = torch.abs(y_stft)
 
-        valid_lengths = compute_stft_frame_lengths(lengths, self.fft_size, self.shift_size, self.win_length)
+        #valid_lengths = compute_stft_frame_lengths(lengths, self.fft_size, self.shift_size, self.win_length)
         sc_loss = self.spectral_convergence_loss(x_mag, y_mag)
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag, valid_lengths)
         #cross_loss = self.cross_spectral_loss(x_stft, y_stft, valid_lengths)
         ph_loss = self.phase_loss(x_stft, y_stft, valid_lengths)
-      
         return sc_loss, mag_loss, ph_loss
 
 
@@ -205,7 +207,7 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
                  fft_sizes=[1024, 2048, 512],
                  hop_sizes=[120, 240, 50],
                  win_lengths=[600, 1200, 240],
-                 window="hann_window", factor_sc=0.1, factor_mag=0.1, factor_phase=0.1):
+                 window="hann_window", factor_sc=0.1, factor_mag=0.1, factor_phase=0.0):
         """Initialize Multi resolution STFT loss module.
         Args:
             fft_sizes (list): List of FFT sizes.
@@ -240,10 +242,10 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
         mag_loss = 0.0
         phase_loss = 0.0
         for f in self.stft_losses:
-            sc_l, mag_l, cross_l = f(x, y, lengths)
+            sc_l, mag_l, phase_l = f(x, y, lengths)
             sc_loss += sc_l
             mag_loss += mag_l
-            cross_loss += cross_l
+            phase_loss += phase_l
         sc_loss /= len(self.stft_losses)
         mag_loss /= len(self.stft_losses)
         phase_loss /= len(self.stft_losses)
