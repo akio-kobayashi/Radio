@@ -135,7 +135,8 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
             self.stft_losses += [STFTLoss(fs, ss, wl, window)]
         self.factor_sc = factor_sc
         self.factor_mag = factor_mag
-
+        self.factor_cmp = factor_cmp
+        
     def forward(self, x, y):
         """Calculate forward propagation.
         Args:
